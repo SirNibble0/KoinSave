@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>KoinSave Dashboard</title>
+
+    <!-- Redirect if not logged in -->
+    <script>
+        if (localStorage.getItem("isLoggedIn") !== "true") {
+            window.location.href = "login.html";
+        }
+    </script>
+
+    <link rel="stylesheet" href="plugins/bootstrap/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="plugins/themefisher-font.v-2/style.css">
+    <link rel="stylesheet" href="css/style.css">
+
+    <style>
+        .balance-box {
+            background: #002366;
+            color: #fff;
+            padding: 25px;
+            border-radius: 20px;
+        }
+
+        .transaction-item {
+            padding: 15px;
+            border-radius: 12px;
+            background: #f9f9f9;
+            margin-bottom: 12px;
+        }
+    </style>
+</head>
+
+<body id="body">
+
+<section class="header navigation">
+    <div class="container">
+        <nav class="navbar navbar-expand-lg">
+            <a class="navbar-brand" href="#">
+                <img src="images/logo.png" alt="logo">
+            </a>
+            <button class="navbar-toggler" data-toggle="collapse" data-target="#navbarNav">
+                <span class="tf-ion-android-menu"></span>
+            </button>
+
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ml-auto">
+                    <li class="nav-item active"><a class="nav-link">Dashboard</a></li>
+                    <li class="nav-item"><a class="nav-link" onclick="logout()">Logout</a></li>
+                </ul>
+            </div>
+        </nav>
+    </div>
+</section>
+
+<br>
+
+<div class="container">
+
+    <!-- USER HEADER -->
+    <div class="d-flex justify-content-between align-items-center">
+        <div>
+            <h4 id="fullName">Loading...</h4>
+            <small id="iban">IBAN: Loading...</small>
+        </div>
+        <img id="profileImage" src="images/default.jpg" class="rounded-circle" width="60">
+    </div>
+
+    <br>
+
+    <!-- BALANCE CARD -->
+    <div class="balance-box">
+        <h6>Your Balance</h6>
+        <h1 id="balance">€0.00</h1>
+    </div>
+
+    <br>
+
+    <h6>Your Quick Payments</h6>
+    <div id="quickUsers" class="d-flex overflow-auto pb-3"></div>
+
+    <br>
+
+    <h6>TODAY'S TRANSACTIONS</h6>
+    <div id="transactionList"></div>
+
+</div>
+
+<script src="plugins/jquery/dist/jquery.min.js"></script>
+<script src="plugins/bootstrap/dist/js/bootstrap.min.js"></script>
+
+<script>
+const API_BASE = "http://localhost/koinsave_api";
+
+// LOAD USER INFO
+async function loadUser() {
+    document.getElementById("fullName").innerText = localStorage.getItem("userName");
+    document.getElementById("profileImage").src =
+        API_BASE + "/" + localStorage.getItem("userImage");
+
+    loadBalance();
+    loadTransactions();
+}
+
+// FETCH BALANCE
+async function loadBalance() {
+    const userId = localStorage.getItem("userId");
+
+    const res = await fetch(`${API_BASE}/getters/get_balance.php?user_id=${userId}`);
+    const data = await res.json();
+
+    if (data.status === "success") {
+        document.getElementById("balance").innerText = "€" + parseFloat(data.balance).toFixed(2);
+        document.getElementById("fullName").innerText = data.full_name;
+        document.getElementById("iban").innerText = "IBAN: BE238723846234";
+    }
+}
+
+// FETCH TRANSACTIONS
+async function loadTransactions() {
+    const userId = localStorage.getItem("userId");
+
+    const res = await fetch(`${API_BASE}/getters/get_transactions.php?user_id=${userId}`);
+    const data = await res.json();
+
+    if (data.status === "success") {
+        buildTransactions(data.transactions);
+        buildQuickUsers(data.transactions);
+    }
+}
+
+// RENDER QUICK USERS (unique senders/receivers)
+function buildQuickUsers(transactions) {
+    const container = document.getElementById("quickUsers");
+    container.innerHTML = "";
+
+    // --- SEND + BUTTON ---
+    const sendBtn = document.createElement("div");
+    sendBtn.className = "mr-3 text-center";
+    sendBtn.style.width = "75px";
+    sendBtn.style.cursor = "pointer";
+    sendBtn.style.textAlign = "center";
+    sendBtn.innerHTML = `
+    <div style="
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+    ">
+        <div style="
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            border: 2px solid #002366;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 28px;
+            color: #002366;
+            font-weight: bold;
+        ">+</div>
+        <div style="margin-top: 5px; font-size: 14px;">Send</div>
+    </div>`;
+    sendBtn.onclick = () => window.location.href = "send_money.html";
+    container.appendChild(sendBtn);
+
+    // COLLECT UNIQUE USERS
+    const unique = {};
+
+    transactions.forEach(t => {
+        const isSent = t.sender_id == localStorage.getItem("userId");
+        const id = isSent ? t.receiver_id : t.sender_id;
+        const name = isSent ? t.receiver_name : t.sender_name;
+        const img = isSent ? t.receiver_image : t.sender_image;
+
+        if (!unique[id]) {
+            unique[id] = { name, img };
+        }
+    });
+
+    // RENDER USERS
+    Object.values(unique).forEach(u => {
+        const div = document.createElement("div");
+        div.className = "mr-3 text-center";
+        div.style.width = "75px";
+        div.innerHTML = `
+            <img src="${API_BASE}/${u.img}" class="rounded-circle" width="60" height="60">
+            <div>${u.name}</div>
+        `;
+        container.appendChild(div);
+    });
+}
+
+// RENDER TRANSACTION LIST
+function buildTransactions(list) {
+    const container = document.getElementById("transactionList");
+    container.innerHTML = "";
+
+    list.forEach(t => {
+        const isSent = t.sender_id == localStorage.getItem("userId");
+
+        const item = document.createElement("div");
+        item.className = "transaction-item";
+
+        item.innerHTML = `
+            <div class="d-flex align-items-center">
+                <img src="${API_BASE}/${t.receiver_image}" width="55" class="rounded-circle">
+                <div class="ml-3 flex-grow-1">
+                    <strong>${isSent ? t.receiver_name : t.sender_name}</strong><br>
+                    <small>${t.description}</small><br>
+                    <small class="text-secondary">${t.created_at}</small>
+                </div>
+                <strong class="${isSent ? 'text-danger' : 'text-success'}">
+                    ${isSent ? "-" : "+"}${t.amount} €
+                </strong>
+            </div>
+        `;
+
+        container.appendChild(item);
+    });
+}
+
+// LOGOUT
+function logout() {
+    localStorage.clear();
+    window.location.href = "login.html";
+}
+
+loadUser();
+</script>
+
+</body>
+</html>
